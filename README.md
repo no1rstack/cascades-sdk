@@ -45,3 +45,8 @@ python -m build
 python -m twine check dist/*
 python -m twine upload dist/*
 ```
+
+## License
+This project is licensed under the Business Source License 1.1 (BSL).  
+See the LICENSE file for details.
+
