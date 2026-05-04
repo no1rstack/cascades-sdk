@@ -1,0 +1,54 @@
+# Publish to PyPI using OIDC (trusted publisher). No long-lived API token in GitHub secrets.
+#
+# One-time PyPI setup (project → Publishing):
+#   - Add "pending" trusted publisher: Owner no1rstack, repo cascades-sdk, workflow publish-pypi.yml,
+#     environment name empty (unless you use the optional GitHub Environment below).
+#   - After first successful run, the publisher activates.
+#
+# Run: Actions → "Publish to PyPI" → Run workflow (optionally enable dry_run to build + twine check only).
+
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "If true, only build and twine check (no upload)"
+        required: false
+        default: "false"
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-pypi-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    # Uncomment after creating a GitHub Environment named "pypi" and matching it on PyPI trusted publisher:
+    # environment: pypi
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: pip install --upgrade build twine
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Twine check
+        run: python -m twine check dist/*
+
+      - name: Publish to PyPI
+        if: ${{ github.event.inputs.dry_run != 'true' }}
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

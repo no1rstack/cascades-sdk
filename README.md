@@ -86,19 +86,24 @@ Canonical upstream: **[`no1rstack/cascades` → `contracts/api.yaml`](https://gi
 
 ## Publish to PyPI (maintainers)
 
+**Preferred:** GitHub **Actions → Publish to PyPI** (`workflow_dispatch`) using a [trusted publisher](https://docs.pypi.org/trusted-publishers/) — see **`RELEASE.md`** for the one-time PyPI UI steps (no `PYPI_*` secret stored in GitHub).
+
+**Local / token file:** build, check, then upload with Twine:
+
 ```bash
 python -m build
 python -m twine check dist/*
 python -m twine upload dist/*
 ```
 
-Or load credentials from a `.env`-style file (e.g. sibling app’s `.env.local`) without printing secrets:
+On Windows, load variables from a `.env`-style file (default: `..\cascades\.env.local`; override with **`-EnvFile`** or **`CASCADES_SDK_ENV_FILE`**):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\publish_pypi.ps1 -EnvFile "..\cascades\.env.local"
+powershell -ExecutionPolicy Bypass -File .\scripts\publish_pypi.ps1
+# or:  ... -EnvFile "C:\path\to\.env.local"
 ```
 
-Use **`PYPI_USERNAME`** + **`PYPI_API_KEY`**, or **`TWINE_USERNAME`** + **`TWINE_PASSWORD`**, or a **`PYPI_TOKEN`** / **`PYPI_API_TOKEN`** with username `__token__`. For Warehouse uploads, **`PYPI_URL`** should be `https://upload.pypi.org/legacy/` (or omit for Twine’s default).
+Use **`PYPI_USERNAME`** + **`PYPI_API_KEY`**, or **`TWINE_USERNAME`** + **`TWINE_PASSWORD`**, or **`PYPI_TOKEN`** / **`PYPI_API_TOKEN`** (script maps token to `__token__` + password). Optional **`PYPI_URL`** for a non-default index (e.g. TestPyPI).
 
 ## Contributing
 

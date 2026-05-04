@@ -17,12 +17,20 @@ Contract changes always flow **platform → SDK** (never edit `contracts/api.yam
 
 4. **Bump version** in `pyproject.toml` **after** the contract is synced and verified (not before).
 
-5. Build and publish:
+5. Build and publish (pick one):
+
+   **A — GitHub Actions (recommended, no upload token in GitHub secrets)**  
+   One-time in PyPI → *cascades-sdk* → **Publishing** → **Add a new pending trusted publisher** → GitHub → `no1rstack/cascades-sdk` → workflow **`publish-pypi.yml`** → environment name empty (unless you uncomment `environment: pypi` in that workflow and create the same environment on GitHub).  
+   Then **Actions** → **Publish to PyPI** → *Run workflow*. Set `dry_run` to true to only build and `twine check`.
+
+   **B — Local machine**  
+   Put **`PYPI_API_TOKEN`** or **`TWINE_USERNAME`** + **`TWINE_PASSWORD`** in a `.env`-style file (see **`README.md`** / `scripts/publish_pypi.ps1`). Then:
 
    ```bash
-   python -m build
-   python -m twine check dist/*
+   make build-dist
    python -m twine upload dist/*
    ```
 
-   On Windows you can instead run **`scripts/publish_pypi.ps1`** (loads `PYPI_*` / `TWINE_*` from a `.env`-style file; see root **README**). PyPI does not allow re-uploading the same version — bump **`pyproject.toml`** and **`src/cascades_sdk/__init__.py`** (`__version__`) together before each release.
+   On Windows you can run **`scripts/publish_pypi.ps1`** (defaults to `..\cascades\.env.local`, or set **`CASCADES_SDK_ENV_FILE`** / **`-EnvFile`**).
+
+   PyPI does not allow re-uploading the same version — bump **`pyproject.toml`** and **`src/cascades_sdk/_meta.py`** (`__version__`) together before each release.

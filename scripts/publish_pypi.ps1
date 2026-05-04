@@ -1,7 +1,12 @@
 #Requires -Version 5.0
-# Load PyPI credentials from a .env-style file (default: sibling cascades/.env.local), build, upload.
+# Load PyPI credentials from a .env-style file, build, upload.
 # Uses: TWINE_USERNAME + TWINE_PASSWORD, or PYPI_TOKEN / PYPI_API_TOKEN with username __token__.
 # Does not print secret values.
+#
+# Env file resolution (first match wins):
+#   1) -EnvFile "C:\path\.env.local"
+#   2) process env CASCADES_SDK_ENV_FILE
+#   3) default: <repo-parent>\cascades\.env.local  (e.g. ../cascades/.env.local next to cascades-sdk)
 
 param(
     [string]$EnvFile = ""
@@ -11,6 +16,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $SdkRoot = Split-Path -Parent $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($EnvFile)) {
+    $EnvFile = [Environment]::GetEnvironmentVariable("CASCADES_SDK_ENV_FILE", "Process")
+}
 if ([string]::IsNullOrWhiteSpace($EnvFile)) {
     $EnvFile = Join-Path (Split-Path $SdkRoot -Parent) "cascades\.env.local"
 }
