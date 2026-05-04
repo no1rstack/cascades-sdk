@@ -1,0 +1,23 @@
+#!/bin/sh
+# Optional local hook: verify contracts/api.yaml matches your platform checkout.
+# Install (run from SDK repo root):
+#   cp scripts/git-hooks/pre-commit-contract.sample .git/hooks/pre-commit
+#   chmod +x .git/hooks/pre-commit
+#
+# Override platform path:
+#   export CASCADES_PLATFORM_CONTRACT=/path/to/cascades/contracts/api.yaml
+
+set -eu
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT" || exit 1
+
+PLATFORM="${CASCADES_PLATFORM_CONTRACT:-../cascades/contracts/api.yaml}"
+if [ ! -f "$PLATFORM" ]; then
+  echo "Skipping contract check (platform repo not found)."
+  echo "  Expected: $PLATFORM"
+  echo "  Set CASCADES_PLATFORM_CONTRACT or clone no1rstack/cascades next to this SDK repo."
+  exit 0
+fi
+
+exec python scripts/verify_contract_mirror.py --against "$PLATFORM"

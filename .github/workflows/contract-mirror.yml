@@ -1,0 +1,76 @@
+name: Contract mirror
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: contract-mirror-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      # Empty when secret is unset; checkout uses explicit fallback to github.token (see below).
+      CASCADES_TOKEN: ${{ secrets.CASCADES_READ_TOKEN }}
+    steps:
+      - name: Check out SDK
+        uses: actions/checkout@v4
+        with:
+          path: sdk
+
+      - name: Fork PR — skip platform contract gate
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true
+        run: |
+          echo "::notice::Skipping contract mirror for this fork PR (cannot use base-repo secrets to clone a private platform repo). A maintainer should run CI from a branch on the upstream repo before merge."
+
+      - name: Resolve platform git ref
+        id: platform_ref
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+        working-directory: sdk
+        run: |
+          set -euo pipefail
+          f="contracts/UPSTREAM_COMMIT"
+          if [ -f "$f" ]; then
+            line="$(grep -v '^[[:space:]]*#' "$f" | grep -v '^[[:space:]]*$' | head -n1 | tr -d '[:space:]')"
+            if [ -n "$line" ]; then
+              echo "Using pinned platform ref from contracts/UPSTREAM_COMMIT: $line"
+              echo "ref=$line" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "ref=main" >> "$GITHUB_OUTPUT"
+          echo "Using platform ref: main (no contracts/UPSTREAM_COMMIT or empty)"
+
+      - name: Check out Cascades platform (contract source of truth)
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+        uses: actions/checkout@v4
+        with:
+          repository: no1rstack/cascades
+          ref: ${{ steps.platform_ref.outputs.ref }}
+          path: platform
+          token: ${{ env.CASCADES_TOKEN != '' && env.CASCADES_TOKEN || github.token }}
+
+      - name: Validate resolved platform ref
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+        working-directory: platform
+        env:
+          REF: ${{ steps.platform_ref.outputs.ref }}
+        run: |
+          set -euo pipefail
+          if ! git rev-parse --verify "$REF^{commit}" >/dev/null 2>&1; then
+            echo "::error::Invalid contracts/UPSTREAM_COMMIT (or ref): does not resolve to a commit — got: $REF"
+            exit 1
+          fi
+          echo "Resolved platform ref to commit: $(git rev-parse "$REF^{commit}")"
+
+      - name: Verify contracts/api.yaml matches platform checkout
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+        working-directory: sdk
+        run: python scripts/verify_contract_mirror.py --against ../platform/contracts/api.yaml

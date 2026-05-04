@@ -1,0 +1,6 @@
+# Optional: pin CI to an exact Cascades platform revision (full SHA, short SHA, branch, or tag).
+# Copy to UPSTREAM_COMMIT and commit when you want release / reproducible CI against a fixed platform ref.
+# If UPSTREAM_COMMIT is missing, CI checks out platform ref "main".
+#
+# Example (replace with a real commit from no1rstack/cascades):
+# abcdef1234567890abcdef1234567890abcdef12

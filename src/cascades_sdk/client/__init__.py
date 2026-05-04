@@ -1,20 +1,63 @@
-"""Cascades SDK client module."""
+"""HTTP client, auth, and wait helpers for the Cascades public API."""
 
-from .client import CascadesClient, CascadeClient
-from .errors import (
+from .._meta import (
+    API_CONTRACT_VERSION,
+    COMPANY_NAME,
+    DEFAULT_USER_AGENT,
+    PRODUCT_NAME,
+    SDK_MAINTAINER,
+    SDK_NAME,
+    SDK_REPOSITORY_URL,
+    __version__,
+    build_default_user_agent,
+    vendor_telemetry_headers,
+)
+from ..auth import (
+    Auth,
+    CompositeAuth,
+    CookieHeaderAuth,
+    HeaderAuth,
+    SessionCookieAuth,
+    normalize_auth,
+)
+from ..errors import (
+    AuthenticationError,
     CascadesSDKError,
     CascadeSDKError,
-    AuthenticationError,
-    ValidationError,
-    NotFoundError,
-    RateLimitError,
-    OrchestrationError,
+    EngineUnavailableError,
     NetworkError,
+    NotFoundError,
+    OrchestrationError,
+    RateLimitError,
+    ServerError,
     TimeoutError,
+    ValidationError,
 )
-from .polling import wait_for_completion, wait_for_completion_async
+from .client import CascadeClient, CascadesClient
+from .polling import (
+    wait_for_completion,
+    wait_for_completion_async,
+    wait_for_run_terminal,
+    wait_for_run_terminal_async,
+)
 
 __all__ = [
+    "API_CONTRACT_VERSION",
+    "COMPANY_NAME",
+    "DEFAULT_USER_AGENT",
+    "PRODUCT_NAME",
+    "SDK_MAINTAINER",
+    "SDK_NAME",
+    "SDK_REPOSITORY_URL",
+    "__version__",
+    "build_default_user_agent",
+    "vendor_telemetry_headers",
+    "Auth",
+    "CompositeAuth",
+    "CookieHeaderAuth",
+    "HeaderAuth",
+    "SessionCookieAuth",
+    "normalize_auth",
     "CascadesClient",
     "CascadeClient",
     "CascadesSDKError",
@@ -23,9 +66,13 @@ __all__ = [
     "ValidationError",
     "NotFoundError",
     "RateLimitError",
+    "EngineUnavailableError",
+    "ServerError",
     "OrchestrationError",
     "NetworkError",
     "TimeoutError",
     "wait_for_completion",
     "wait_for_completion_async",
+    "wait_for_run_terminal",
+    "wait_for_run_terminal_async",
 ]

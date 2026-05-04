@@ -1,0 +1,4 @@
+include contracts/api.yaml
+include contracts/README.md
+include contracts/UPSTREAM_COMMIT.example
+include RELEASE.md

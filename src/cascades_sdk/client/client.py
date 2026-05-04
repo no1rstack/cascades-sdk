@@ -1,137 +1,115 @@
-"""HTTP client for Cascades control plane API."""
+"""Unified HTTP client for every path in ``contracts/api.yaml``."""
 
-from typing import Any, Dict, Optional
+from __future__ import annotations
 
-import requests
+from typing import Any, Dict, Iterator, Optional
 
-from .errors import (
-    CascadesSDKError,
-    AuthenticationError,
-    ValidationError,
-    NotFoundError,
-    RateLimitError,
-    OrchestrationError,
-    NetworkError,
-    TimeoutError as SDKTimeoutError,
-)
+from ..auth import Auth
+from ..http_transport import HttpTransport
+from ..sse import iter_sse_json_events
 
 
 class CascadesClient:
-    """Thin HTTP client for Cascades flow registration and execution APIs."""
+    """
+    Public Cascades API client.
+
+    Most routes require ``cookieSession`` auth (see :mod:`cascades_sdk.auth`). ``GET /api/system/version``
+    has no security requirement in the contract; you may call it with ``auth=None``.
+    """
 
     def __init__(
         self,
         base_url: str,
-        api_key: str,
+        auth: Optional[Auth] = None,
+        *,
         timeout: int = 30,
         verify_ssl: bool = True,
-        task_output_path_template: str = "/api/runs/{run_id}/tasks/{task_id}/output",
-    ):
-        self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
-        self.timeout = timeout
-        self.verify_ssl = verify_ssl
-        self.task_output_path_template = task_output_path_template
-
-        self.session = requests.Session()
-        self.session.headers.update(
-            {
-                "X-API-Key": api_key,
-                "Content-Type": "application/json",
-                "User-Agent": "cascades-sdk-python/0.2.0",
-            }
+        user_agent: Optional[str] = None,
+        vendor_headers: bool = False,
+    ) -> None:
+        """
+        :param vendor_headers: When ``True``, add optional ``X-SDK-*`` / ``X-Product`` / ``X-Vendor``
+            markers (same mapping as ``vendor_telemetry_headers()`` in ``cascades_sdk._meta``).
+        """
+        self._http = HttpTransport(
+            base_url,
+            auth,
+            timeout=timeout,
+            verify_ssl=verify_ssl,
+            user_agent=user_agent,
+            vendor_headers=vendor_headers,
         )
 
-    def _request(
-        self,
-        method: str,
-        path: str,
-        json: Optional[Dict[str, Any]] = None,
-        params: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, Any]:
-        url = f"{self.base_url}{path}"
-        try:
-            response = self.session.request(
-                method=method,
-                url=url,
-                json=json,
-                params=params,
-                headers=headers,
-                timeout=self.timeout,
-                verify=self.verify_ssl,
-            )
-        except requests.exceptions.Timeout as exc:
-            raise SDKTimeoutError(f"Request timeout after {self.timeout}s") from exc
-        except requests.exceptions.ConnectionError as exc:
-            raise NetworkError(f"Connection failed: {exc}") from exc
-        except requests.exceptions.RequestException as exc:
-            raise NetworkError(f"Network error: {exc}") from exc
+    def get_public_api_version(self) -> Dict[str, Any]:
+        """``GET /api/system/version`` → ``ApiVersionResponse``."""
+        return self._http.request_json("GET", "/api/system/version")
 
-        try:
-            response_body = response.json() if response.content else {}
-        except ValueError:
-            response_body = {"raw": response.text}
+    def submit_workflow_run(self, body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """``POST /api/workflows/run`` → ``WorkflowRunAccepted``."""
+        return self._http.request_json("POST", "/api/workflows/run", json_body=body)
 
-        if response.status_code == 401:
-            raise AuthenticationError("Authentication failed - check API key", 401, response_body)
-        if response.status_code == 400:
-            raise ValidationError(response_body.get("title", "Validation failed"), 400, response_body)
-        if response.status_code == 404:
-            raise NotFoundError(response_body.get("title", "Resource not found"), 404, response_body)
-        if response.status_code == 429:
-            raise RateLimitError(response_body.get("title", "Rate limit exceeded"), 429, response_body)
-        if response.status_code >= 500:
-            raise OrchestrationError(response_body.get("title", "Server error"), response.status_code, response_body)
-        if not response.ok:
-            raise CascadesSDKError(f"HTTP {response.status_code}: {response.text}", response.status_code, response_body)
+    def clone_catalog_workflow(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        """``POST /api/workflows/clone`` → ``WorkflowCloneResponse``."""
+        return self._http.request_json("POST", "/api/workflows/clone", json_body=body)
 
-        return response_body
-
-    def register_flow(self, flow_name: str, dag: Dict[str, Any], version: str = "1.0.0") -> str:
-        response = self._request(
-            "POST",
-            "/api/flows/register",
-            json={"name": flow_name, "version": version, "dag": dag},
-        )
-        return response["id"]
-
-    def trigger_flow(self, flow_id: str, inputs: Dict[str, Any]) -> str:
-        response = self._request("POST", "/api/runs", json={"flow_id": flow_id, "input": inputs})
-        return response["run_id"]
-
-    def get_run(self, run_id: str) -> Dict[str, Any]:
-        run = self._request("GET", f"/api/runs/{run_id}")
-        status = run.get("status")
-        if isinstance(status, str):
-            run["status"] = status.lower()
-
-        if "result" not in run and "output" in run:
-            run["result"] = run.get("output")
-
-        return run
-
-    def get_flow_graph(self, flow_id: str) -> Dict[str, Any]:
-        return self._request("GET", f"/api/flows/definitions/{flow_id}/graph")
-
-    def get_run_graph(self, run_id: str) -> Dict[str, Any]:
-        return self._request("GET", f"/api/flow-runs/{run_id}/graph")
-
-    def submit_task_output(
+    def iter_run_stream_events(
         self,
         run_id: str,
-        task_id: str,
-        output: Any,
-        metadata: Optional[Dict[str, Any]] = None,
-        path_template: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        template = path_template or self.task_output_path_template
-        path = template.format(run_id=run_id, task_id=task_id)
-        payload: Dict[str, Any] = {"output": output}
-        if metadata:
-            payload["metadata"] = metadata
-        return self._request("POST", path, json=payload)
+        *,
+        since: Optional[str] = None,
+        task_since: Optional[str] = None,
+    ) -> Iterator[Dict[str, Any]]:
+        """``GET /api/runs/{id}/stream`` — yields ``RunStreamEvent`` dicts ``{type, data}``."""
+        params: Dict[str, Any] = {}
+        if since is not None:
+            params["since"] = since
+        if task_since is not None:
+            params["taskSince"] = task_since
+        response = self._http.request_stream(
+            "GET",
+            f"/api/runs/{run_id}/stream",
+            params=params or None,
+        )
+        try:
+            yield from iter_sse_json_events(response.iter_lines(decode_unicode=True))
+        finally:
+            response.close()
+
+    def save_github_integration(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        return self._http.request_json("POST", "/api/integrations/github", json_body=body)
+
+    def save_gitlab_integration(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        return self._http.request_json("POST", "/api/integrations/gitlab", json_body=body)
+
+    def save_jira_integration(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        return self._http.request_json("POST", "/api/integrations/jira", json_body=body)
+
+    def save_servicenow_integration(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        return self._http.request_json("POST", "/api/integrations/servicenow", json_body=body)
+
+    def save_slack_integration(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        return self._http.request_json("POST", "/api/integrations/slack", json_body=body)
+
+    def save_pagerduty_integration(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        return self._http.request_json("POST", "/api/integrations/pagerduty", json_body=body)
+
+    def save_hubspot_integration(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        return self._http.request_json("POST", "/api/integrations/hubspot", json_body=body)
+
+    def test_hubspot_integration(self) -> Dict[str, Any]:
+        return self._http.request_json("POST", "/api/integrations/hubspot/test", json_body=None)
+
+    def save_salesforce_integration(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        return self._http.request_json("POST", "/api/integrations/salesforce", json_body=body)
+
+    def test_salesforce_integration(self) -> Dict[str, Any]:
+        return self._http.request_json("POST", "/api/integrations/salesforce/test", json_body=None)
+
+    def save_vercel_integration(self, body: Dict[str, Any]) -> Dict[str, Any]:
+        return self._http.request_json("POST", "/api/integrations/vercel", json_body=body)
+
+    def test_vercel_integration(self) -> Dict[str, Any]:
+        return self._http.request_json("POST", "/api/integrations/vercel/test", json_body=None)
 
 
-# Backward-compatible alias
 CascadeClient = CascadesClient

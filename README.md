@@ -1,6 +1,6 @@
 # Cascades SDK (Python)
 
-Official Python client for **[Cascades](https://cascades.work)** — a **governed execution** system. This project is licensed under the **Business Source License 1.1 (BUSL 1.1)**; see **[License](#license)**. The package provides **capture-mode authoring** (`@task` / `@flow`) to build a **serializable DAG**, plus a **small HTTP client** to register flows, start runs, poll status, and (when your deployment supports it) submit task output.
+Official Python client for **[Cascades](https://cascades.work)** — a **governed execution** system. This project is licensed under the **Business Source License 1.1 (BUSL 1.1)**; see **[License](#license)**. The package provides **capture-mode authoring** (`@task` / `@flow`) to build a **serializable DAG**, plus an **HTTP client** aligned with the mirrored OpenAPI contract.
 
 **PyPI:** [`cascades-sdk`](https://pypi.org/project/cascades-sdk/) · **Repository:** [`no1rstack/cascades-sdk`](https://github.com/no1rstack/cascades-sdk) · **HTTP contract (mirrored):** [`contracts/api.yaml`](./contracts/api.yaml) (source of truth: [`no1rstack/cascades`](https://github.com/no1rstack/cascades/blob/main/contracts/api.yaml))
 
@@ -9,9 +9,10 @@ Official Python client for **[Cascades](https://cascades.work)** — a **governe
 | In scope | Out of scope (handled by the Cascades platform / your deployment) |
 |----------|----------------------------------------------------------------------|
 | `@task` / `@flow` decorators and **capture-mode** execution to record a DAG | Worker execution, retries, queues, scheduling |
-| **Deterministic** DAG JSON (`build_dag_from_flow`, canonicalization helpers) | Full OpenAPI surface beyond the mirrored contract |
-| **Thin** `requests`-based client: register flow, trigger run, get run, graphs, `submit_task_output` | Auth0 cookie sessions, Stripe, or other routes not in `contracts/api.yaml` |
-| **Sync + async** polling helpers (`wait_for_completion`, `wait_for_completion_async`) | In-process orchestration engine inside this wheel |
+| **Deterministic** DAG JSON (`build_dag_from_flow`, canonicalization helpers) | Routes omitted from `contracts/api.yaml` (see platform `/openapi.json` for the full app) |
+| **`CascadesClient`** — every path in `contracts/api.yaml` (workflows, runs SSE, integrations, system version) | Auth0 login UI, Stripe webhooks, internal admin routes |
+| **Auth helpers** (`SessionCookieAuth`, `CookieHeaderAuth`, `HeaderAuth`, `CompositeAuth`) matching contract security | Issuing session cookies (browser / Auth0 flow) |
+| **`wait_for_completion`** / **`wait_for_completion_async`** — block on **SSE** (`GET /api/runs/{id}/stream`) until a terminal run status | In-process orchestration engine inside this wheel |
 
 The SDK does **not** ship Airflow/Argo/BPMN adapters, W3C PROV builders, CloudEvents emitters, or OpenTelemetry instrumentation — those belong in **documentation or separate packages** if you add them later.
 
@@ -23,30 +24,36 @@ pip install cascades-sdk
 
 Import namespace: **`cascades_sdk`** (not `cascade_sdk`). Legacy wheel name **`noirstack-cascade-sdk`** is obsolete; use **`cascades-sdk`** only.
 
+## Contract version parity
+
+`cascades_sdk.API_CONTRACT_VERSION` must match `info.version` in `contracts/api.yaml`. When the platform bumps that field, mirror the YAML and update `src/cascades_sdk/_meta.py` before releasing (`tests/test_contract_parity.py` enforces this).
+
 ## Quick start
 
 ```python
-from cascades_sdk import task, flow, CascadesClient, wait_for_completion
+from cascades_sdk import CascadesClient, SessionCookieAuth, wait_for_completion
 from cascades_sdk.compiler import build_dag_from_flow
 
-@task
-def add(a: int, b: int) -> int:
-    return a + b
+# Session value from your Auth0-backed deployment (__session by default).
+client = CascadesClient(
+    "https://your-cascades-host",
+    SessionCookieAuth("paste-session-cookie-value-here"),
+)
 
-@flow
-def math_flow(a: int, b: int):
-    return add(a, b)
+version = client.get_public_api_version()  # GET /api/system/version (no auth required)
+accepted = client.submit_workflow_run({"workflowId": "your-catalog-id"})  # camelCase response keys
+run_id = accepted["runId"]
 
-dag = build_dag_from_flow(math_flow, {"a": 1, "b": 2})
-
-client = CascadesClient(base_url="http://localhost:3000", api_key="your_api_key")
-flow_id = client.register_flow("math_flow", dag)
-run_id = client.trigger_flow(flow_id, {"a": 1, "b": 2})
-result = wait_for_completion(client, run_id)
-print(result.get("result"))
+# Blocks on SSE until SUCCESS / FAILED / CANCELLED (see contracts/api.yaml Runs tag).
+terminal_event = wait_for_completion(client, run_id, timeout=3600.0)
+print(terminal_event)
 ```
 
-**Async polling:** `from cascades_sdk import wait_for_completion_async` and `await wait_for_completion_async(client, run_id)`.
+**Async:** `from cascades_sdk import wait_for_completion_async` and `await wait_for_completion_async(client, run_id)`.
+
+**Optional header auth** (only if your tenant documents it): `CompositeAuth(SessionCookieAuth("..."), HeaderAuth({"X-Custom-Token": "..."}))`.
+
+**Optional product markers:** pass `vendor_headers=True` to `CascadesClient` to add stable `X-SDK-*` / `X-Product` / `X-Vendor` headers (see `vendor_telemetry_headers()` in `cascades_sdk._meta`). The default `User-Agent` already names the SDK, **Cascades**, repo URL, and **Noir Stack LLC**.
 
 **Aliases:** `CascadeClient` and `CascadeSDKError` are kept for backward compatibility; prefer `CascadesClient` / `CascadesSDKError`.
 
@@ -58,15 +65,15 @@ Under `@flow`, task calls are intercepted so the compiler can record **nodes and
 
 ## HTTP API surface
 
-The SDK follows paths and payloads described in **`contracts/api.yaml`** in this repo (a mirror of the platform contract). Typical methods today:
+The client mirrors **`contracts/api.yaml`** only (16 paths), including:
 
-- `register_flow(name, dag, version="1.0.0")` → `POST /api/flows/register`
-- `trigger_flow(flow_id, inputs)` → `POST /api/runs`
-- `get_run(run_id)` → `GET /api/runs/{id}`
-- `get_flow_graph` / `get_run_graph` — graph introspection where exposed
-- `submit_task_output(run_id, task_id, output, ...)` — optional HITL / manual completion paths; `path_template` overrides the default URL pattern if your deployment differs
+- `get_public_api_version()` → `GET /api/system/version`
+- `submit_workflow_run(body)` → `POST /api/workflows/run`
+- `clone_catalog_workflow(body)` → `POST /api/workflows/clone`
+- `iter_run_stream_events(run_id, since=..., task_since=...)` → `GET /api/runs/{id}/stream` (SSE `RunStreamEvent` payloads)
+- `save_*_integration` / `test_*_integration` → `POST /api/integrations/...`
 
-If your deployment uses **session cookies** instead of `X-API-Key`, extend or wrap the client — the stock client is oriented around API key headers as in the mirrored contract.
+JSON keys on the wire match the deployment (camelCase as in the contract). Typed hints live under `cascades_sdk.types` for common response bodies.
 
 ## HTTP contract mirror (maintainers)
 
