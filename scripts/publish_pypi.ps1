@@ -75,20 +75,45 @@ if (-not $env:TWINE_USERNAME) {
 
 Set-Location $SdkRoot
 
+$pyprojectPath = Join-Path $SdkRoot "pyproject.toml"
+$pyprojectRaw = Get-Content -LiteralPath $pyprojectPath -Raw
+if ($pyprojectRaw -notmatch '(?m)^version\s*=\s*"([^"]+)"') {
+    Write-Error "Could not parse version from $pyprojectPath"
+    exit 2
+}
+$ReleaseVersion = $Matches[1].Trim()
+
+$dist = Join-Path $SdkRoot "dist"
+if (Test-Path -LiteralPath $dist) {
+    Remove-Item -LiteralPath (Join-Path $dist "*") -Recurse -Force -ErrorAction SilentlyContinue
+}
+else {
+    New-Item -ItemType Directory -Path $dist | Out-Null
+}
+
 python -m pip install -q build twine
 python -m build
 python -m twine check dist/*
-$dist = Join-Path $SdkRoot "dist"
-$files = @()
-$files += Get-ChildItem -Path $dist -Filter "*.whl" -ErrorAction SilentlyContinue
-$files += Get-ChildItem -Path $dist -Filter "*.tar.gz" -ErrorAction SilentlyContinue
-if ($files.Count -eq 0) {
-    Write-Error "No wheel or sdist under $dist"
+
+# Only this release — never upload stale wheels/sdists left in dist/ (they may target a legacy PyPI name).
+$wheel = Get-ChildItem -Path $dist -Filter "cascades_sdk-$ReleaseVersion-*.whl" -ErrorAction SilentlyContinue | Select-Object -First 1
+$sdist = Get-ChildItem -Path $dist -Filter "cascades_sdk-$ReleaseVersion.tar.gz" -ErrorAction SilentlyContinue | Select-Object -First 1
+$files = @($wheel, $sdist) | Where-Object { $_ -ne $null }
+if ($files.Count -ne 2) {
+    Write-Error "Expected exactly one wheel matching cascades_sdk-$ReleaseVersion-*.whl and one sdist cascades_sdk-$ReleaseVersion.tar.gz under $dist; found $($files.Count) file(s). See dist/ contents."
     exit 2
 }
+
+Write-Host "Uploading only: $($wheel.Name), $($sdist.Name) (pyproject version $ReleaseVersion)"
+
 $uploadArgs = @("upload") + ($files | ForEach-Object { $_.FullName }) + @("--non-interactive")
 if ($env:PYPI_URL -and $env:PYPI_URL.Trim() -ne "") {
-    $uploadArgs = @("upload") + ($files | ForEach-Object { $_.FullName }) + @("--repository-url", $env:PYPI_URL.Trim(), "--non-interactive")
+    $ru = $env:PYPI_URL.Trim()
+    if ($ru -match "pypi\.org/project/") {
+        Write-Error "PYPI_URL looks like a project page URL ($ru). Use the upload API host, e.g. https://upload.pypi.org/legacy/ (or omit PYPI_URL for production)."
+        exit 2
+    }
+    $uploadArgs = @("upload") + ($files | ForEach-Object { $_.FullName }) + @("--repository-url", $ru, "--non-interactive")
 }
 python -m twine @uploadArgs
 Write-Host "PyPI upload finished."

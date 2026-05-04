@@ -24,12 +24,14 @@ Contract changes always flow **platform → SDK** (never edit `contracts/api.yam
    Then **Actions** → **Publish to PyPI** → *Run workflow*. Set `dry_run` to true to only build and `twine check`.
 
    **B — Local machine**  
-   Put **`PYPI_API_TOKEN`** or **`TWINE_USERNAME`** + **`TWINE_PASSWORD`** in a `.env`-style file (see **`README.md`** / `scripts/publish_pypi.ps1`). Then:
+   Put **`PYPI_API_TOKEN`** or **`TWINE_USERNAME`** + **`TWINE_PASSWORD`** in a `.env`-style file (see **`README.md`** / `scripts/publish_pypi.ps1`). The script **clears `dist/`**, builds, then uploads **only** the wheel + sdist for the version in **`pyproject.toml`** (so old wheels never hit PyPI). Then:
 
    ```bash
    make build-dist
-   python -m twine upload dist/*
+   python -m twine upload dist/cascades_sdk-<version>-*.whl dist/cascades_sdk-<version>.tar.gz
    ```
+
+   Do **not** set **`PYPI_URL`** to a project page like `https://pypi.org/project/...` — use **`https://upload.pypi.org/legacy/`** for production, or omit **`PYPI_URL`** and let Twine default.
 
    On Windows you can run **`scripts/publish_pypi.ps1`** (defaults to `..\cascades\.env.local`, or set **`CASCADES_SDK_ENV_FILE`** / **`-EnvFile`**).
 

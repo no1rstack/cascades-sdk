@@ -103,7 +103,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish_pypi.ps1
 # or:  ... -EnvFile "C:\path\to\.env.local"
 ```
 
-Use **`PYPI_USERNAME`** + **`PYPI_API_KEY`**, or **`TWINE_USERNAME`** + **`TWINE_PASSWORD`**, or **`PYPI_TOKEN`** / **`PYPI_API_TOKEN`** (script maps token to `__token__` + password). Optional **`PYPI_URL`** for a non-default index (e.g. TestPyPI).
+Use **`PYPI_USERNAME`** + **`PYPI_API_KEY`**, or **`TWINE_USERNAME`** + **`TWINE_PASSWORD`**, or **`PYPI_TOKEN`** / **`PYPI_API_TOKEN`** (script maps token to `__token__` + password). Optional **`PYPI_URL`**: use an **upload** endpoint (e.g. `https://upload.pypi.org/legacy/` or TestPyPI’s upload URL). Do **not** use a project page URL (`https://pypi.org/project/...`).
 
 ## Contributing
 
