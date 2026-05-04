@@ -85,34 +85,41 @@ $ReleaseVersion = $Matches[1].Trim()
 
 $dist = Join-Path $SdkRoot "dist"
 if (Test-Path -LiteralPath $dist) {
-    Remove-Item -LiteralPath (Join-Path $dist "*") -Recurse -Force -ErrorAction SilentlyContinue
+    # Do not use -LiteralPath with "*": it will not expand and stale wheels remain (wrong twine check / uploads).
+    Get-ChildItem -LiteralPath $dist -Force | Remove-Item -Recurse -Force -ErrorAction Stop
 }
 else {
     New-Item -ItemType Directory -Path $dist | Out-Null
 }
 
+# Common mistake: PYPI_URL copied from a browser project tab — Twine needs the upload API, not /project/…
+if ($env:PYPI_URL -and $env:PYPI_URL.Trim() -ne "") {
+    $candidate = $env:PYPI_URL.Trim()
+    if ($candidate -match "pypi\.org/project/") {
+        Write-Warning "PYPI_URL is a project page ($candidate), not an upload endpoint. Clearing for this run; use https://upload.pypi.org/legacy/ or omit PYPI_URL. Fix your .env file."
+        [Environment]::SetEnvironmentVariable("PYPI_URL", "", "Process")
+    }
+}
+
 python -m pip install -q build twine
 python -m build
-python -m twine check dist/*
 
-# Only this release — never upload stale wheels/sdists left in dist/ (they may target a legacy PyPI name).
+# Only this release — never upload stale wheels/sdists (they may target a legacy PyPI project name).
 $wheel = Get-ChildItem -Path $dist -Filter "cascades_sdk-$ReleaseVersion-*.whl" -ErrorAction SilentlyContinue | Select-Object -First 1
 $sdist = Get-ChildItem -Path $dist -Filter "cascades_sdk-$ReleaseVersion.tar.gz" -ErrorAction SilentlyContinue | Select-Object -First 1
-$files = @($wheel, $sdist) | Where-Object { $_ -ne $null }
-if ($files.Count -ne 2) {
-    Write-Error "Expected exactly one wheel matching cascades_sdk-$ReleaseVersion-*.whl and one sdist cascades_sdk-$ReleaseVersion.tar.gz under $dist; found $($files.Count) file(s). See dist/ contents."
+if (-not $wheel -or -not $sdist) {
+    Write-Error "Expected one wheel cascades_sdk-$ReleaseVersion-*.whl and one sdist cascades_sdk-$ReleaseVersion.tar.gz under $dist."
     exit 2
 }
 
+python -m twine check $wheel.FullName $sdist.FullName
+
 Write-Host "Uploading only: $($wheel.Name), $($sdist.Name) (pyproject version $ReleaseVersion)"
 
+$files = @($wheel, $sdist)
 $uploadArgs = @("upload") + ($files | ForEach-Object { $_.FullName }) + @("--non-interactive")
 if ($env:PYPI_URL -and $env:PYPI_URL.Trim() -ne "") {
     $ru = $env:PYPI_URL.Trim()
-    if ($ru -match "pypi\.org/project/") {
-        Write-Error "PYPI_URL looks like a project page URL ($ru). Use the upload API host, e.g. https://upload.pypi.org/legacy/ (or omit PYPI_URL for production)."
-        exit 2
-    }
     $uploadArgs = @("upload") + ($files | ForEach-Object { $_.FullName }) + @("--repository-url", $ru, "--non-interactive")
 }
 python -m twine @uploadArgs
