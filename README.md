@@ -41,7 +41,8 @@ client = CascadesClient(
 )
 
 version = client.get_public_api_version()  # GET /api/system/version (no auth required)
-accepted = client.submit_workflow_run({"workflowId": "your-catalog-id"})  # camelCase response keys
+# Response dicts use the contract's camelCase keys (e.g. runId), not snake_case — same JSON as OpenAPI.
+accepted = client.submit_workflow_run({"workflowId": "your-catalog-id"})
 run_id = accepted["runId"]
 
 # Blocks on SSE until SUCCESS / FAILED / CANCELLED (see contracts/api.yaml Runs tag).
@@ -73,7 +74,7 @@ The client mirrors **`contracts/api.yaml`** only (16 paths), including:
 - `iter_run_stream_events(run_id, since=..., task_since=...)` → `GET /api/runs/{id}/stream` (SSE `RunStreamEvent` payloads)
 - `save_*_integration` / `test_*_integration` → `POST /api/integrations/...`
 
-JSON keys on the wire match the deployment (camelCase as in the contract). Typed hints live under `cascades_sdk.types` for common response bodies.
+JSON keys match the deployment and **`contracts/api.yaml`** (camelCase). That is deliberate for a thin client: payloads align with the HTTP contract rather than idiomatic Python dict style. Typed shapes live under `cascades_sdk.types` for common response bodies.
 
 ## HTTP contract mirror (maintainers)
 
