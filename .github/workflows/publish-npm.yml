@@ -1,0 +1,51 @@
+# Publishes @noirstack/cascades-sdk (mirrored contracts/api.yaml).
+# Requires NPM_TOKEN repository secret (classic automation or granular publish token).
+#
+# Optional later: npm "trusted publisher" / OIDC for GitHub Actions to avoid long-lived tokens.
+
+name: Publish npm @noirstack/cascades-sdk
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "If true, only npm publish --dry-run"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-npm-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/cascades-sdk
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN secret is not set on this repository."
+            exit 1
+          fi
+          ARGS="--access public"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+          fi
+          npm publish $ARGS

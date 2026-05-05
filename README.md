@@ -106,6 +106,28 @@ powershell -ExecutionPolicy Bypass -File .\scripts\publish_pypi.ps1
 
 Use **`PYPI_USERNAME`** + **`PYPI_API_KEY`**, or **`TWINE_USERNAME`** + **`TWINE_PASSWORD`**, or **`PYPI_TOKEN`** / **`PYPI_API_TOKEN`** (script maps token to `__token__` + password). Optional **`PYPI_URL`**: use an **upload** endpoint (e.g. `https://upload.pypi.org/legacy/` or TestPyPI’s upload URL). Do **not** use a project page URL (`https://pypi.org/project/...`).
 
+## Publish to npm (maintainers)
+
+Optional scoped npm package **`@noirstack/cascades-sdk`** (mirrored **`contracts/api.yaml`**, **`LICENSE`**, ESM **`index.js`** / **`index.d.ts`**) — the tarball is limited by the **`files`** array, and **`prepack`** / **`prepublishOnly`** run **`npm run build`** before pack/publish. See **`packages/cascades-sdk/`** and **`RELEASE.md`**. PyPI **`cascades-sdk`** remains the Python client.
+
+**Try a tarball from the repo root** (requires **`npm install`** once so the workspace resolves):
+
+```bash
+npm run pack:npm -- --dry-run
+# equivalent: npm pack -w @noirstack/cascades-sdk --dry-run
+```
+
+Or **`cd packages/cascades-sdk`** and run **`npm pack`** / **`npm pack --dry-run`** as usual.
+
+**CI:** Actions → **Publish npm @noirstack/cascades-sdk** (requires **`NPM_TOKEN`** repository secret).
+
+**Local:** same default env file as PyPI (`..\cascades\.env.local`, or **`CASCADES_SDK_ENV_FILE`** / **`-EnvFile`**). Set **`NPM_TOKEN`** or **`NODE_AUTH_TOKEN`**.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\publish_npm.ps1
+# Dry run:  ...\publish_npm.ps1 -DryRun
+```
+
 ## Contributing
 
 Issues and PRs: **[github.com/no1rstack/cascades-sdk](https://github.com/no1rstack/cascades-sdk/issues)**. For **compiler** edge cases, include a **minimal** `@flow` / `@task` snippet and the DAG you expected vs what `build_dag_from_flow` produced.

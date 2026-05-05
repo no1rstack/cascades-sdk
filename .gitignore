@@ -16,3 +16,6 @@ htmlcov/
 # Virtual envs
 .venv/
 venv/
+
+# npm (contract workspace only)
+node_modules/

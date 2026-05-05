@@ -1,0 +1,47 @@
+{
+  "name": "@noirstack/cascades-sdk",
+  "version": "1.0.0",
+  "description": "Cascades HTTP contract (OpenAPI YAML) for JS/TS tooling — npm companion to the PyPI cascades-sdk Python client.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "default": "./index.js"
+    },
+    "./api.yaml": "./contracts/api.yaml"
+  },
+  "license": "BUSL-1.1",
+  "author": {
+    "name": "Noir Stack",
+    "url": "https://github.com/no1rstack/cascades-sdk"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/no1rstack/cascades-sdk.git",
+    "directory": "packages/cascades-sdk"
+  },
+  "homepage": "https://github.com/no1rstack/cascades-sdk/tree/main/packages/cascades-sdk",
+  "bugs": {
+    "url": "https://github.com/no1rstack/cascades-sdk/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "README.md",
+    "LICENSE",
+    "contracts"
+  ],
+  "scripts": {
+    "build": "node ./build.mjs",
+    "prepack": "npm run build",
+    "prepublishOnly": "npm run build"
+  }
+}

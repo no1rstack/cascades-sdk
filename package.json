@@ -1,0 +1,10 @@
+{
+  "name": "cascades-sdk",
+  "private": true,
+  "description": "Python cascades_sdk repo; root npm metadata wires the publishable @noirstack/cascades-sdk workspace (HTTP contract).",
+  "workspaces": ["packages/cascades-sdk"],
+  "scripts": {
+    "pack:npm": "npm pack -w @noirstack/cascades-sdk",
+    "publish:npm": "npm publish -w @noirstack/cascades-sdk --access public"
+  }
+}
