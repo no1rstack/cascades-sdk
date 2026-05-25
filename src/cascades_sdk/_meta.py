@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 # Must match ``info.version`` in ``contracts/api.yaml`` (SDK ↔ platform HTTP boundary).
 API_CONTRACT_VERSION = "1.0.0"

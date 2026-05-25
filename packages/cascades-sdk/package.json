@@ -1,6 +1,6 @@
 {
   "name": "@noirstack/cascades-sdk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Cascades HTTP contract (OpenAPI YAML) for JS/TS tooling — npm companion to the PyPI cascades-sdk Python client.",
   "type": "module",
   "sideEffects": false,
