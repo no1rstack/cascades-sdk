@@ -1,0 +1,129 @@
+{
+  "name": "cascades-workflow",
+  "displayName": "Cascades",
+  "description": "OSINT workflow engine for the Noir Stack platform. Submit workflows, poll connectors, verify evidence, and manage OSINT pipelines from VS Code.",
+  "version": "0.1.0",
+  "publisher": "Cascades",
+  "license": "BUSL-1.1",
+  "author": {
+    "name": "Noir Stack LLC",
+    "url": "https://noirstack.com"
+  },
+  "homepage": "https://cascades.work",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/no1rstack/cascades-sdk.git",
+    "directory": "packages/vscode-extension"
+  },
+  "bugs": {
+    "url": "https://github.com/no1rstack/cascades-sdk/issues"
+  },
+  "qna": "marketplace",
+  "sponsor": {
+    "url": "https://noirstack.com"
+  },
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages",
+    "Snippets"
+  ],
+  "icon": "assets/icon-512.png",
+  "keywords": [
+    "cascades",
+    "workflow",
+    "osint",
+    "orchestration",
+    "dag",
+    "noirstack",
+    "spiderfoot",
+    "maltego",
+    "judicium"
+  ],
+  "galleryBanner": {
+    "color": "#0B0C0E",
+    "theme": "dark"
+  },
+  "pricing": "Free",
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "cascades.gettingStarted",
+        "title": "Cascades: Getting Started",
+        "category": "Cascades"
+      },
+      {
+        "command": "cascades.authenticate",
+        "title": "Cascades: Set Session Cookie",
+        "category": "Cascades"
+      },
+      {
+        "command": "cascades.openDashboard",
+        "title": "Cascades: Open Dashboard",
+        "category": "Cascades"
+      },
+      {
+        "command": "cascades.openBuilder",
+        "title": "Cascades: Open Workflow Builder",
+        "category": "Cascades"
+      },
+      {
+        "command": "cascades.listWorkflows",
+        "title": "Cascades: List Workflows",
+        "category": "Cascades"
+      },
+      {
+        "command": "cascades.runOsintIntake",
+        "title": "Cascades: Run OSINT Intake",
+        "category": "Cascades"
+      },
+      {
+        "command": "cascades.runInvestigation",
+        "title": "Cascades: Run Investigation",
+        "category": "Cascades"
+      },
+      {
+        "command": "cascades.verifyEvidence",
+        "title": "Cascades: Verify Evidence",
+        "category": "Cascades"
+      },
+      {
+        "command": "cascades.showRunStatus",
+        "title": "Cascades: Show Run Status",
+        "category": "Cascades"
+      },
+      {
+        "command": "cascades.showDocumentation",
+        "title": "Cascades: Open Documentation",
+        "category": "Cascades"
+      },
+      {
+        "command": "cascades.insertExample",
+        "title": "Cascades: Insert Code Example",
+        "category": "Cascades"
+      },
+      {
+        "command": "cascades.about",
+        "title": "Cascades: About",
+        "category": "Cascades"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "tsc --noEmit -p ./",
+    "package": "node ../../node_modules/@vscode/vsce/vsce package --no-dependencies",
+    "publish": "node ../../node_modules/@vscode/vsce/vsce publish"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.5",
+    "@types/vscode": "^1.95.0",
+    "@vscode/vsce": "^3.6.0",
+    "typescript": "^5.6.3"
+  }
+}
