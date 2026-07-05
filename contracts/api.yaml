@@ -1,1236 +1,563 @@
-# THIS FILE IS THE SOURCE OF TRUTH FOR SDK ↔ PLATFORM INTERFACE
-openapi: 3.0.3
+openapi: "3.1.0"
 info:
-  title: Cascades SDK ↔ Platform HTTP boundary
-  version: "1.0.0" # sync: cascades-sdk `src/cascades_sdk/_meta.py` → `API_CONTRACT_VERSION`
+  title: Cascades API
   description: |
-    Canonical surfaces the Cascades Next.js platform exposes for workflow submission,
-    live status, and execution logs. This document is the shared contract between the
-    **cascades-sdk** on PyPI (`import cascades_sdk`; source https://github.com/no1rstack/cascades-sdk) and the Cascades platform repository.
-
-    **Authentication:** Production deployments authenticate callers using Auth0-backed **session cookies**
-    (`cookieSession` in this contract). Use the SDK's ``SessionCookieAuth`` or ``CookieHeaderAuth`` (see ``cascades_sdk.auth``).
-    Deployments may optionally enable **programmatic header-based credentials** (for example bearer tokens);
-    use ``HeaderAuth`` when your tenant documents supported headers.
-
-    Until bearer issuance is broadly documented per tenant, integrators typically reuse browser session flows or
-    automation-friendly cookie exports aligned with internal tiers.
+    Workflow execution and automation engine for the Noir Stack platform.
+    Supports OSINT intake pipelines, DAG-based workflow execution, evidence
+    verification, cron scheduling, role-based access control, and more.
+  version: "2.3.0"
+  contact:
+    name: Noir Stack Platform Team
+    url: https://cascades.work/docs
 
 servers:
-  - url: /
-    description: Origin of the Cascades deployment (e.g. https://cascades.work)
+  - url: https://cascades.work
+    description: Production
 
-tags:
-  - name: System
-    description: Public API metadata (no authentication required).
-  - name: Workflows
-    description: Submit queued or inline workflow runs.
-  - name: Runs
-    description: Observe run lifecycle, logs, and task rows.
-  - name: Integrations
-    description: Per-user connector credentials (`integration_configs`) for workflow executors.
+security:
+  - BearerAuth: []
+  - SessionCookieAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    SessionCookieAuth:
+      type: apiKey
+      in: cookie
+      name: __session
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    Workflow:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        version: { type: string }
+        collectors: { type: array, items: { type: string } }
+        schedule: { type: string, nullable: true }
+        inputs: { type: object }
+        status: { type: string }
+        created_at: { type: string, format: date-time }
+
+    Execution:
+      type: object
+      properties:
+        id: { type: string }
+        workflow_id: { type: string }
+        status: { type: string, enum: [pending, running, completed, failed, cancelled] }
+        started_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time, nullable: true }
+        inputs: { type: object }
+        outputs: { type: object }
+        steps: { type: array, items: { type: object } }
+        error: { type: string }
+
+    OsintIntakeRequest:
+      type: object
+      required: [connectors]
+      properties:
+        investigationId: { type: string, description: "Judicium investigation ID" }
+        connectors:
+          type: array
+          items:
+            type: object
+            properties:
+              sourceTool: { type: string, enum: [spiderfoot, maltego, shodan, censys, urlscan, virustotal, whois, github, api, database] }
+              baseUrl: { type: string }
+              apiKey: { type: string }
+              filePath: { type: string }
+              fileFormat: { type: string, enum: [csv, mtz, xlsx] }
+        deduplicate: { type: boolean, default: true }
+        autoSubmit: { type: boolean, default: true }
+
+    OsintIntakeResult:
+      type: object
+      properties:
+        executionId: { type: string }
+        totalCollected: { type: integer }
+        newFindings: { type: integer }
+        duplicatesSkipped: { type: integer }
+        submittedToJudicium: { type: integer }
+        errors: { type: array, items: { type: string } }
+
+    DagDefinition:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              type: { type: string }
+              data: { type: object }
+        edges:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              source: { type: string }
+              target: { type: string }
+
+    RunResult:
+      type: object
+      properties:
+        runId: { type: string }
+        status: { type: string }
+        executionMode: { type: string }
+        nodeResults: { type: object }
+        nodeStatuses: { type: object }
+        startedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+        error: { type: string }
+
+    Trigger:
+      type: object
+      properties:
+        id: { type: string }
+        workflowId: { type: string }
+        schedule: { type: string }
+        enabled: { type: boolean }
+        lastRun: { type: string, format: date-time }
+        nextRun: { type: string, format: date-time }
+        inputs: { type: object }
+
+    ApiKey:
+      type: object
+      properties:
+        id: { type: string }
+        key: { type: string }
+        name: { type: string }
+        permissions: { type: array, items: { type: object } }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+
+    HealthStatus:
+      type: object
+      properties:
+        status: { type: string, enum: [healthy, degraded, unhealthy] }
+        circuitBreakers: { type: object }
+        deadLetterQueue: { type: object }
+        uptime: { type: number }
+        timestamp: { type: string, format: date-time }
 
 paths:
-  /api/system/version:
+  /api/v1/workflows:
     get:
-      tags: [System]
-      operationId: getPublicApiVersion
-      summary: Public HTTP API major version
-      description: |
-        Machine-readable API revision label for SDK negotiators and parity checks.
-        Compare with deployment ``GET /openapi.json`` for full operation lists.
+      operationId: listWorkflows
+      summary: List all workflows
+      tags: [Workflows]
+      security: [{BearerAuth: [cascades:workflows:read]}]
       responses:
         "200":
-          description: API version identifier
+          description: List of workflow definitions
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ApiVersionResponse"
-
-  /api/workflows/run:
+                type: object
+                properties:
+                  workflows: { type: array, items: { $ref: "#/components/schemas/Workflow" } }
     post:
+      operationId: createWorkflow
+      summary: Create a new workflow
       tags: [Workflows]
-      operationId: submitWorkflowRun
-      summary: Submit a workflow run (catalog id optional)
-      description: |
-        Validates the requested workflow definition (bundled catalog entry or caller-owned persisted row),
-        persists `workflow_run` and `task_run` rows, then enqueues BullMQ work or executes inline when permitted
-        by `ENV_TIER` and Redis availability. Optional JSON body `{ "workflow_id": "<catalog-id>" }` (alias `workflowId`); omit for the demo DAG.
-        Unknown catalog ids respond with **404**. Unknown body keys respond with **400**.
-      security:
-        - cookieSession: []
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/WorkflowRunRequestBody"
-      responses:
-        "200":
-          description: Run accepted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkflowRunAccepted"
-        "400":
-          description: Workflow validation failed
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkflowValidationError"
-        "401":
-          description: Unauthenticated caller
-        "404":
-          description: Unknown catalog workflow id or not permitted for this user
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkflowNotFound"
-        "503":
-          description: Worker queue unavailable for this tier
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkflowEngineUnavailable"
-
-  /api/workflows/clone:
-    post:
-      tags: [Workflows]
-      operationId: cloneCatalogWorkflow
-      summary: Clone a catalog workflow into a caller-owned persisted definition
-      description: |
-        Resolves ``catalogItemId`` the same way as ``POST /api/workflows/run``, copies the DAG into a new ``workflows`` row,
-        and assigns a fresh definition ``id`` so edits never mutate bundled presets.
-      security:
-        - cookieSession: []
+      security: [{BearerAuth: [cascades:workflows:write]}]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/WorkflowCloneRequest"
+              $ref: "#/components/schemas/Workflow"
       responses:
-        "200":
-          description: Clone persisted
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkflowCloneResponse"
-        "400":
-          description: Invalid JSON body or graph validation failure
-        "401":
-          description: Unauthenticated caller
-        "404":
-          description: Unknown catalog workflow id or not permitted for this user
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/WorkflowNotFound"
+        "201":
+          description: Workflow created
 
-  /api/runs/{id}/stream:
-    get:
-      tags: [Runs]
-      operationId: streamRunTelemetry
-      summary: SSE stream for status polling and log retrieval
-      description: |
-        Server-Sent Events (`text/event-stream`). Each frame uses a fixed SSE event name (`telemetry`);
-        the **JSON body is always** a ``RunStreamEvent`` object with ``type`` (string) and ``data`` (object).
-
-        Query parameters:
-        - `since` — ISO8601 cursor into `execution_log` for incremental logs.
-        - `taskSince` — ISO8601 cursor for `task_run` row updates.
-
-        Standard ``type`` values (lifecycle):
-
-        - ``run.started`` — initial run snapshot for this connection.
-        - ``run.progress`` — subsequent run row snapshots (status / completion).
-        - ``run.completed`` — terminal success (closes stream server-side).
-        - ``run.failed`` — terminal failure (closes stream server-side).
-
-        Auxiliary kinds (same envelope):
-
-        - ``log.entry`` — execution log rows.
-        - ``task.update`` — task_run row updates.
-        - ``stream.error`` — polling / transport errors on the server side.
-      security:
-        - cookieSession: []
+  /api/v1/workflows/{id}/execute:
+    post:
+      operationId: executeWorkflow
+      summary: Execute a workflow
+      tags: [Workflows]
+      security: [{BearerAuth: [cascades:workflows:execute]}]
       parameters:
         - name: id
           in: path
           required: true
-          schema:
-            type: string
-          description: Workflow run identifier
-        - name: since
-          in: query
-          required: false
-          schema:
-            type: string
-          description: ISO8601 cursor for `execution_log`
-        - name: taskSince
-          in: query
-          required: false
-          schema:
-            type: string
-          description: ISO8601 cursor for `task_run`
+          schema: { type: string }
+      responses:
+        "202":
+          description: Workflow execution started
+
+  /api/v1/workflows/{id}/run:
+    post:
+      operationId: runNamedWorkflow
+      summary: Run a named workflow (investigation, evidence-verification, etc.)
+      tags: [Workflows]
+      security: [{BearerAuth: [cascades:workflows:execute]}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
       responses:
         "200":
-          description: |
-            SSE stream. Frames named ``telemetry``; parse each ``data`` line as ``RunStreamEvent``.
+          description: Workflow execution result
+
+  /api/v1/executions/{id}:
+    get:
+      operationId: getExecution
+      summary: Get execution status and results
+      tags: [Executions]
+      security: [{BearerAuth: [cascades:executions:read]}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Execution details
+
+  /api/v1/executions/{id}/cancel:
+    post:
+      operationId: cancelExecution
+      summary: Cancel a running execution
+      tags: [Executions]
+      security: [{BearerAuth: [cascades:executions:write]}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Execution cancelled
+
+  /api/v1/executions/{id}/complete:
+    post:
+      operationId: completeExecution
+      summary: Mark an execution as complete
+      tags: [Executions]
+      security: [{BearerAuth: [cascades:executions:write]}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Execution completed
+
+  /api/v1/automation/trigger:
+    post:
+      operationId: triggerAutomation
+      summary: Trigger an automation workflow
+      tags: [Automation]
+      security: [{BearerAuth: [cascades:automation:trigger]}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workflow_id: { type: string }
+                inputs: { type: object }
+      responses:
+        "202":
+          description: Automation triggered
+
+  /api/v1/osint/intake:
+    post:
+      operationId: runOsintIntake
+      summary: Execute OSINT intake pipeline
+      description: Poll configured OSINT connectors, normalize findings, deduplicate, and submit to Judicium
+      tags: [OSINT]
+      security: [{BearerAuth: [cascades:workflows:execute]}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OsintIntakeRequest"
+      responses:
+        "202":
+          description: OSINT intake result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OsintIntakeResult"
+
+  /api/v1/osint/intake/{id}:
+    get:
+      operationId: getOsintIntakeResult
+      summary: Get OSINT intake execution result
+      tags: [OSINT]
+      security: [{BearerAuth: [cascades:executions:read]}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Intake result
+
+  /api/v1/osint/connectors:
+    get:
+      operationId: listConnectors
+      summary: List registered OSINT connectors
+      tags: [OSINT]
+      security: [{BearerAuth: [cascades:workflows:read]}]
+      responses:
+        "200":
+          description: List of connectors
+
+  /api/v1/osint/connectors/{source}/validate:
+    post:
+      operationId: validateConnector
+      summary: Validate an OSINT connector configuration
+      tags: [OSINT]
+      security: [{BearerAuth: [cascades:workflows:read]}]
+      parameters:
+        - name: source
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Validation result
+
+  /api/v1/triggers:
+    get:
+      operationId: listTriggers
+      summary: List scheduled triggers
+      tags: [Triggers]
+      security: [{BearerAuth: [cascades:triggers:manage]}]
+      responses:
+        "200":
+          description: List of triggers
+    post:
+      operationId: createTrigger
+      summary: Create a scheduled trigger
+      tags: [Triggers]
+      security: [{BearerAuth: [cascades:triggers:manage]}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workflowId, schedule]
+              properties:
+                workflowId: { type: string }
+                schedule: { type: string, description: "cron expression (5 fields)" }
+                inputs: { type: object }
+      responses:
+        "201":
+          description: Trigger created
+    delete:
+      operationId: deleteTrigger
+      summary: Delete a scheduled trigger
+      tags: [Triggers]
+      security: [{BearerAuth: [cascades:triggers:manage]}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Trigger deleted
+
+  /api/workflows/run:
+    post:
+      operationId: submitDagRun
+      summary: Submit a DAG workflow for execution
+      description: Matches the cascades-sdk contract. Accepts a DAG definition or references a catalog workflow.
+      tags: [DAG]
+      security: [{SessionCookieAuth: []}]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workflowId: { type: string }
+                dag: { $ref: "#/components/schemas/DagDefinition" }
+                context: { type: object }
+                executionMode: { type: string, enum: [inline, queued] }
+      responses:
+        "202":
+          description: DAG run accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  runId: { type: string }
+                  status: { type: string }
+                  executionMode: { type: string }
+
+  /api/runs/{id}:
+    get:
+      operationId: getRunResult
+      summary: Get DAG run result
+      tags: [DAG]
+      security: [{SessionCookieAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Run result with per-node statuses and outputs
+
+  /api/runs/{id}/stream:
+    get:
+      operationId: streamRunEvents
+      summary: Stream DAG run events via SSE
+      tags: [DAG]
+      security: [{SessionCookieAuth: []}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: SSE event stream
           content:
             text/event-stream:
               schema:
-                $ref: "#/components/schemas/RunStreamEvent"
-        "401":
-          description: Unauthenticated caller
-        "404":
-          description: Run missing or forbidden for this user
+                type: string
 
-  /api/integrations/github:
+  /api/v1/keys:
+    get:
+      operationId: listApiKeys
+      summary: List API keys
+      tags: [Keys]
+      security: [{BearerAuth: [platform:audit:write]}]
+      responses:
+        "200":
+          description: List of API keys
     post:
-      summary: Save or update GitHub integration (PAT or secret reference)
-      description: |
-        Stores a GitHub credential for the current user: either a PAT in `integration_configs`, or a
-        `secretKey` referencing the unified `secrets` table. Used by github workflow nodes.
-
-        **Credential handling:** Inline tokens live in `integration_configs`. Secret-backed configs store only
-        the key name; the PAT is decrypted at execution time. The raw token is never returned (responses may
-        include `tokenLastFour` only).
-
-        Provide **exactly one** of `token` or `secretKey`. Malformed JSON request bodies respond with **400**
-        and `error: "invalid_token"`. If `secretKey` is unknown for this user, **400** with `unknown_secret_key`.
-      operationId: saveGithubIntegration
-      tags: [Integrations]
-      security:
-        - cookieSession: []
+      operationId: createApiKey
+      summary: Create a new API key
+      tags: [Keys]
+      security: [{BearerAuth: [platform:audit:write]}]
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GithubIntegrationSaveRequest"
+              type: object
+              properties:
+                name: { type: string }
+                permissions: { type: array, items: { type: object } }
+                expiresInMs: { type: integer }
+      responses:
+        "201":
+          description: API key created
+
+  /api/v1/keys/{id}:
+    delete:
+      operationId: deleteApiKey
+      summary: Delete an API key
+      tags: [Keys]
+      security: [{BearerAuth: [platform:audit:write]}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
       responses:
         "200":
-          description: Integration saved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GithubIntegrationSaved"
-        "400":
-          description: Invalid input (token or repository)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GithubIntegrationSaveError"
-        "401":
-          description: Not authenticated
-        "500":
-          description: Server error
+          description: API key deleted
 
-  /api/integrations/gitlab:
+  /api/v1/keys/{id}/rotate:
     post:
-      summary: Save or update GitLab integration (PAT or secret reference)
-      description: |
-        Stores a GitLab credential for the current user: either a PAT in `integration_configs`, or a
-        `secretKey` referencing the unified `secrets` table. Used by gitlab workflow nodes (GitLab.com API v4; PAT only).
-
-        **Credential handling:** Same model as GitHub — inline PAT in config or `secretKey` resolved at run time.
-
-        Provide **exactly one** of `token` or `secretKey`. Optional `defaultProject` is `namespace/project` for nodes
-        that use the `__default__` project sentinel.
-      operationId: saveGitlabIntegration
-      tags: [Integrations]
-      security:
-        - cookieSession: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/GitlabIntegrationSaveRequest"
+      operationId: rotateApiKey
+      summary: Rotate an API key (generate new key, keep same id)
+      tags: [Keys]
+      security: [{BearerAuth: [platform:audit:write]}]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
       responses:
         "200":
-          description: Integration saved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GitlabIntegrationSaved"
-        "400":
-          description: Invalid input (token or project path)
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/GitlabIntegrationSaveError"
-        "401":
-          description: Not authenticated
-        "500":
-          description: Server error
+          description: Key rotated
 
-  /api/integrations/jira:
+  /api/v1/webhooks/github:
     post:
-      summary: Save or update Jira Cloud integration
-      description: |
-        Stores `baseUrl`, `email`, and either inline `apiToken` or `secretKey` (PAT in secrets). Basic auth to Jira REST v3. No OAuth.
-      operationId: saveJiraIntegration
-      tags: [Integrations]
-      security:
-        - cookieSession: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/JiraIntegrationSaveRequest"
+      operationId: handleGithubWebhook
+      summary: Receive GitHub webhook with signature verification
+      tags: [Webhooks]
+      security: []
       responses:
         "200":
-          description: Integration saved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JiraIntegrationSaved"
-        "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/JiraIntegrationSaveError"
-        "401":
-          description: Not authenticated
-        "500":
-          description: Server error
+          description: Webhook received
 
-  /api/integrations/servicenow:
+  /api/v1/webhooks/generic:
     post:
-      summary: Save or update ServiceNow integration
-      description: |
-        Stores `instanceUrl`, `username`, and either inline `password` or `secretKey`. Basic auth to Table API. No OAuth.
-      operationId: saveServicenowIntegration
-      tags: [Integrations]
-      security:
-        - cookieSession: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/ServicenowIntegrationSaveRequest"
+      operationId: handleGenericWebhook
+      summary: Receive generic webhook with HMAC verification
+      tags: [Webhooks]
+      security: []
       responses:
         "200":
-          description: Integration saved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ServicenowIntegrationSaved"
-        "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ServicenowIntegrationSaveError"
-        "401":
-          description: Not authenticated
-        "500":
-          description: Server error
+          description: Webhook received
 
-  /api/integrations/slack:
-    post:
-      summary: Save or update Slack incoming webhook
-      description: |
-        Stores an incoming webhook URL for Slack workflow nodes: paste `webhookUrl`, or store the URL in unified secrets and reference `webhookSecretKey`. Exactly one of the two is required.
-      operationId: saveSlackIntegration
-      tags: [Integrations]
-      security:
-        - cookieSession: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SlackIntegrationSaveRequest"
+  /api/v1/system/health:
+    get:
+      operationId: getSystemHealth
+      summary: Get system health status with circuit breaker and DLQ stats
+      tags: [System]
+      security: []
       responses:
         "200":
-          description: Integration saved
+          description: Health status
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/SlackIntegrationSaved"
-        "400":
-          description: Invalid webhook URL, unknown secret key, or encryption not configured
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SlackIntegrationSaveError"
-        "401":
-          description: Not authenticated
-        "500":
-          description: Server error
+                $ref: "#/components/schemas/HealthStatus"
 
-  /api/integrations/pagerduty:
-    post:
-      summary: Save or update PagerDuty integration
-      description: |
-        Stores Events API v2 `routingKey` or `secretKey` (secret value must be the routing key only).
-        No email integrations, webhooks, or REST API keys for incident triggering.
-      operationId: savePagerdutyIntegration
-      tags: [Integrations]
-      security:
-        - cookieSession: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/PagerdutyIntegrationSaveRequest"
+  /:
+    get:
+      operationId: getLandingPage
+      summary: Landing page
+      tags: [UI]
+      security: []
       responses:
         "200":
-          description: Integration saved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PagerdutyIntegrationSaved"
-        "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/PagerdutyIntegrationSaveError"
-        "401":
-          description: Not authenticated
-        "500":
-          description: Server error
+          description: HTML landing page
 
-  /api/integrations/hubspot:
-    post:
-      summary: Save or update HubSpot integration
-      description: Private app token inline or via unified secrets secretKey.
-      operationId: saveHubspotIntegration
-      tags: [Integrations]
-      security:
-        - cookieSession: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/HubspotIntegrationSaveRequest"
+  /builder:
+    get:
+      operationId: getWorkflowBuilder
+      summary: Visual workflow builder
+      tags: [UI]
+      security: []
       responses:
         "200":
-          description: Integration saved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HubspotIntegrationSaved"
-        "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HubspotIntegrationSaveError"
-        "401":
-          description: Not authenticated
-        "500":
-          description: Server error
+          description: HTML workflow builder
 
-  /api/integrations/hubspot/test:
-    post:
-      summary: Test HubSpot CRM API connectivity
-      operationId: testHubspotIntegration
-      tags: [Integrations]
-      security:
-        - cookieSession: []
+  /dashboard:
+    get:
+      operationId: getDashboard
+      summary: Console dashboard
+      tags: [UI]
+      security: []
       responses:
         "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IntegrationTestOk"
-        "400":
-          description: Not configured or missing token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HubspotVercelIntegrationTestError"
-        "401":
-          description: Not authenticated
-        "502":
-          description: HubSpot API error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HubspotVercelIntegrationTestError"
-
-  /api/integrations/salesforce:
-    post:
-      summary: Save or update Salesforce integration
-      description: Username-password OAuth (Connected App). Password inline or secretKey.
-      operationId: saveSalesforceIntegration
-      tags: [Integrations]
-      security:
-        - cookieSession: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/SalesforceIntegrationSaveRequest"
-      responses:
-        "200":
-          description: Integration saved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SalesforceIntegrationSaved"
-        "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SalesforceIntegrationSaveError"
-        "401":
-          description: Not authenticated
-        "500":
-          description: Server error
-
-  /api/integrations/salesforce/test:
-    post:
-      summary: Test Salesforce REST API connectivity
-      operationId: testSalesforceIntegration
-      tags: [Integrations]
-      security:
-        - cookieSession: []
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IntegrationTestOk"
-        "400":
-          description: Not configured or missing credentials
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SalesforceIntegrationTestError"
-        "401":
-          description: Not authenticated
-        "502":
-          description: Salesforce API error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/SalesforceIntegrationTestError"
-
-  /api/integrations/vercel:
-    post:
-      summary: Save or update Vercel integration
-      description: API bearer token inline or via unified secrets secretKey.
-      operationId: saveVercelIntegration
-      tags: [Integrations]
-      security:
-        - cookieSession: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/VercelIntegrationSaveRequest"
-      responses:
-        "200":
-          description: Integration saved
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/VercelIntegrationSaved"
-        "400":
-          description: Invalid input
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/VercelIntegrationSaveError"
-        "401":
-          description: Not authenticated
-        "500":
-          description: Server error
-
-  /api/integrations/vercel/test:
-    post:
-      summary: Test Vercel API connectivity
-      operationId: testVercelIntegration
-      tags: [Integrations]
-      security:
-        - cookieSession: []
-      responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/IntegrationTestOk"
-        "400":
-          description: Not configured or missing token
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HubspotVercelIntegrationTestError"
-        "401":
-          description: Not authenticated
-        "502":
-          description: Vercel API error
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/HubspotVercelIntegrationTestError"
-
-components:
-  securitySchemes:
-    cookieSession:
-      type: apiKey
-      in: cookie
-      name: __session
-      description: Auth0 session cookie (exact name may vary per deployment).
-
-  schemas:
-    GithubIntegrationSaveRequest:
-      oneOf:
-        - type: object
-          required: [token]
-          properties:
-            token:
-              type: string
-              description: GitHub Personal Access Token (never echoed in responses).
-              minLength: 20
-              maxLength: 512
-            defaultRepository:
-              type: string
-              description: >-
-                Default repository as owner/repo (for workflow nodes that set repository to the __default__ sentinel).
-              pattern: '^[^/\s]+/[^/\s]+$'
-        - type: object
-          required: [secretKey]
-          properties:
-            secretKey:
-              type: string
-              description: Unified secrets key (Dashboard → Secrets); PAT resolved at execution time.
-              minLength: 1
-              maxLength: 128
-            defaultRepository:
-              type: string
-              description: >-
-                Default repository as owner/repo (for workflow nodes that set repository to the __default__ sentinel).
-              pattern: '^[^/\s]+/[^/\s]+$'
-
-    GithubIntegrationSaved:
-      type: object
-      required: [ok, id, provider]
-      properties:
-        ok:
-          type: boolean
-          example: true
-        id:
-          type: string
-          description: integration_configs row identifier
-        provider:
-          type: string
-          enum: [github]
-        tokenLastFour:
-          type: string
-          description: Last four characters of the stored token for UI confirmation only.
-        defaultRepository:
-          type: string
-          description: Echo of the persisted default repository when provided.
-
-    GithubIntegrationSaveError:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [invalid_token, invalid_repository, unknown_secret_key]
-          description: |
-            `invalid_token` — malformed body, or neither/both of `token` and `secretKey`.
-            `invalid_repository` — `defaultRepository` not in owner/repo form.
-            `unknown_secret_key` — `secretKey` not found for this user.
-
-    GitlabIntegrationSaveRequest:
-      oneOf:
-        - type: object
-          required: [token]
-          properties:
-            token:
-              type: string
-              description: GitLab Personal Access Token (never echoed in responses).
-              minLength: 20
-              maxLength: 512
-            defaultProject:
-              type: string
-              description: >-
-                Default project path namespace/project (nested groups allowed), for nodes using the __default__ sentinel.
-              pattern: '^[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)+$'
-        - type: object
-          required: [secretKey]
-          properties:
-            secretKey:
-              type: string
-              description: Unified secrets key (Dashboard → Secrets); PAT resolved at execution time.
-              minLength: 1
-              maxLength: 128
-            defaultProject:
-              type: string
-              description: >-
-                Default project path namespace/project (nested groups allowed), for nodes using the __default__ sentinel.
-              pattern: '^[a-zA-Z0-9_.-]+(?:/[a-zA-Z0-9_.-]+)+$'
-
-    GitlabIntegrationSaved:
-      type: object
-      required: [ok, id, provider]
-      properties:
-        ok:
-          type: boolean
-          example: true
-        id:
-          type: string
-          description: integration_configs row identifier
-        provider:
-          type: string
-          enum: [gitlab]
-        tokenLastFour:
-          type: string
-          description: Last four characters of the stored token for UI confirmation only.
-        defaultProject:
-          type: string
-          description: Echo of the persisted default project when provided.
-
-    GitlabIntegrationSaveError:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [invalid_token, invalid_project, unknown_secret_key]
-          description: |
-            `invalid_token` — malformed body, or neither/both of `token` and `secretKey`.
-            `invalid_project` — `defaultProject` not a valid namespace/project path.
-            `unknown_secret_key` — `secretKey` not found for this user.
-
-    JiraIntegrationSaveRequest:
-      oneOf:
-        - type: object
-          required: [apiToken, baseUrl, email]
-          properties:
-            apiToken:
-              type: string
-              minLength: 8
-              maxLength: 512
-            baseUrl:
-              type: string
-              format: uri
-              description: Jira Cloud site root (https).
-            email:
-              type: string
-              format: email
-        - type: object
-          required: [secretKey, baseUrl, email]
-          properties:
-            secretKey:
-              type: string
-              minLength: 1
-              maxLength: 128
-            baseUrl:
-              type: string
-              format: uri
-            email:
-              type: string
-              format: email
-
-    JiraIntegrationSaved:
-      type: object
-      required: [ok, id, provider]
-      properties:
-        ok:
-          type: boolean
-          example: true
-        id:
-          type: string
-        provider:
-          type: string
-          enum: [jira]
-        tokenLastFour:
-          type: string
-
-    JiraIntegrationSaveError:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [invalid_token, invalid_body, unknown_secret_key]
-
-    ServicenowIntegrationSaveRequest:
-      oneOf:
-        - type: object
-          required: [password, instanceUrl, username]
-          properties:
-            password:
-              type: string
-              minLength: 1
-              maxLength: 512
-            instanceUrl:
-              type: string
-              description: https://*.service-now.com
-            username:
-              type: string
-        - type: object
-          required: [secretKey, instanceUrl, username]
-          properties:
-            secretKey:
-              type: string
-              minLength: 1
-              maxLength: 128
-            instanceUrl:
-              type: string
-            username:
-              type: string
-
-    ServicenowIntegrationSaved:
-      type: object
-      required: [ok, id, provider]
-      properties:
-        ok:
-          type: boolean
-          example: true
-        id:
-          type: string
-        provider:
-          type: string
-          enum: [servicenow]
-        passwordLastFour:
-          type: string
-
-    ServicenowIntegrationSaveError:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [invalid_token, invalid_body, unknown_secret_key]
-
-    SlackIntegrationSaveRequest:
-      oneOf:
-        - type: object
-          required: [webhookUrl]
-          additionalProperties: false
-          properties:
-            webhookUrl:
-              type: string
-              minLength: 24
-              maxLength: 2048
-              description: Slack incoming webhook URL (https://hooks.slack.com/services/...).
-        - type: object
-          required: [webhookSecretKey]
-          additionalProperties: false
-          properties:
-            webhookSecretKey:
-              type: string
-              minLength: 1
-              maxLength: 128
-              description: Unified secrets key whose value is the incoming webhook URL.
-
-    SlackIntegrationSaved:
-      type: object
-      required: [ok, id, provider]
-      properties:
-        ok:
-          type: boolean
-          example: true
-        id:
-          type: string
-        provider:
-          type: string
-          enum: [slack]
-
-    SlackIntegrationSaveError:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [invalid_webhook, unknown_webhook_secret_key]
-
-    PagerdutyIntegrationSaveRequest:
-      oneOf:
-        - type: object
-          required: [routingKey]
-          additionalProperties: false
-          properties:
-            routingKey:
-              type: string
-              minLength: 10
-              maxLength: 512
-              description: Events API v2 integration routing key (paste).
-        - type: object
-          required: [secretKey]
-          additionalProperties: false
-          properties:
-            secretKey:
-              type: string
-              minLength: 1
-              maxLength: 128
-              description: Unified secrets key; value must be the routing key only.
-
-    PagerdutyIntegrationSaved:
-      type: object
-      required: [ok, id, provider]
-      properties:
-        ok:
-          type: boolean
-          example: true
-        id:
-          type: string
-        provider:
-          type: string
-          enum: [pagerduty]
-        routingKeyLastFour:
-          type: string
-
-    PagerdutyIntegrationSaveError:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [invalid_routing_key, unknown_secret_key]
-
-    IntegrationTestOk:
-      type: object
-      required: [ok]
-      properties:
-        ok:
-          type: boolean
-          enum: [true]
-
-    HubspotVercelIntegrationTestError:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [not_configured, missing_token, provider_api_error]
-        status:
-          type: integer
-        detail:
-          type: string
-
-    SalesforceIntegrationTestError:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [not_configured, missing_credentials, provider_api_error]
-        status:
-          type: integer
-        detail:
-          type: string
-
-    HubspotIntegrationSaveRequest:
-      oneOf:
-        - type: object
-          required: [privateAppToken]
-          additionalProperties: false
-          properties:
-            privateAppToken:
-              type: string
-              minLength: 10
-              maxLength: 512
-        - type: object
-          required: [secretKey]
-          additionalProperties: false
-          properties:
-            secretKey:
-              type: string
-              minLength: 1
-              maxLength: 128
-
-    HubspotIntegrationSaved:
-      type: object
-      required: [ok, id, provider]
-      properties:
-        ok:
-          type: boolean
-          example: true
-        id:
-          type: string
-        provider:
-          type: string
-          enum: [hubspot]
-        tokenLastFour:
-          type: string
-
-    HubspotIntegrationSaveError:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [invalid_token, unknown_secret_key]
-
-    VercelIntegrationSaveRequest:
-      oneOf:
-        - type: object
-          required: [accessToken]
-          additionalProperties: false
-          properties:
-            accessToken:
-              type: string
-              minLength: 10
-              maxLength: 512
-        - type: object
-          required: [secretKey]
-          additionalProperties: false
-          properties:
-            secretKey:
-              type: string
-              minLength: 1
-              maxLength: 128
-
-    VercelIntegrationSaved:
-      type: object
-      required: [ok, id, provider]
-      properties:
-        ok:
-          type: boolean
-          example: true
-        id:
-          type: string
-        provider:
-          type: string
-          enum: [vercel]
-        tokenLastFour:
-          type: string
-
-    VercelIntegrationSaveError:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [invalid_token, unknown_secret_key]
-
-    SalesforceIntegrationSaveRequest:
-      oneOf:
-        - type: object
-          required: [instanceUrl, username, clientId, clientSecret, password]
-          additionalProperties: false
-          properties:
-            instanceUrl:
-              type: string
-              format: uri
-            username:
-              type: string
-            securityToken:
-              type: string
-              maxLength: 128
-            clientId:
-              type: string
-            clientSecret:
-              type: string
-            password:
-              type: string
-            loginHost:
-              type: string
-              format: uri
-        - type: object
-          required: [instanceUrl, username, clientId, clientSecret, secretKey]
-          additionalProperties: false
-          properties:
-            instanceUrl:
-              type: string
-              format: uri
-            username:
-              type: string
-            securityToken:
-              type: string
-              maxLength: 128
-            clientId:
-              type: string
-            clientSecret:
-              type: string
-            secretKey:
-              type: string
-              minLength: 1
-              maxLength: 128
-            loginHost:
-              type: string
-              format: uri
-
-    SalesforceIntegrationSaved:
-      type: object
-      required: [ok, id, provider]
-      properties:
-        ok:
-          type: boolean
-          example: true
-        id:
-          type: string
-        provider:
-          type: string
-          enum: [salesforce]
-        passwordLastFour:
-          type: string
-        clientSecretLastFour:
-          type: string
-
-    SalesforceIntegrationSaveError:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [invalid_body, unknown_secret_key]
-
-    ApiVersionResponse:
-      type: object
-      required: [apiVersion]
-      properties:
-        apiVersion:
-          type: string
-          enum: [v1]
-
-    WorkflowRunRequestBody:
-      type: object
-      description: |
-        Optional catalog selector. Omit or use `{}` to enqueue the bundled demo workflow.
-        Canonical field is ``workflow_id``. Deprecated alias ``workflowId`` is accepted for backward compatibility; do not send conflicting values.
-      additionalProperties: false
-      properties:
-        workflow_id:
-          type: string
-          description: Catalog workflow identifier (bundled DAG id or ``db-*`` persisted row).
-        workflowId:
-          type: string
-          description: Deprecated alias for ``workflow_id``.
-        context:
-          type: object
-          description: |
-            Optional arbitrary JSON merged into ``workflow_run.context``. The platform merges dashboard-triggered runs under ``source: "dashboard-run"`` together with this object (later keys from this payload overlay defaults unless callers intentionally overwrite nested fields).
-            Include ``stripe_event_id`` (``evt_…``) or a nested ``stripe_event.id`` to persist ``workflow_run.stripe_event_id`` and surface Stripe → run → proof linkage in the dashboard.
-          additionalProperties: true
-
-    WorkflowCloneRequest:
-      type: object
-      required: [catalogItemId]
-      additionalProperties: false
-      properties:
-        catalogItemId:
-          type: string
-          description: Bundled definition id or ``db-{workflowRowId}`` to duplicate into a new owned workflow row.
-
-    WorkflowCloneResponse:
-      type: object
-      required: [catalogItemId, workflowRowId, definitionId, name]
-      properties:
-        catalogItemId:
-          type: string
-          description: Dashboard catalog key for the clone (always ``db-{workflowRowId}``).
-        workflowRowId:
-          type: string
-        definitionId:
-          type: string
-          description: New DAG ``id`` embedded in the cloned definition JSON.
-        name:
-          type: string
-
-    RunStreamEvent:
-      type: object
-      description: |
-        Mandatory JSON shape for every SSE ``data`` line on ``GET /api/runs/{id}/stream``.
-        Do not emit ad-hoc root JSON objects on this route.
-      required:
-        - type
-        - data
-      properties:
-        type:
-          type: string
-          description: |
-            Standard lifecycle values: ``run.started``, ``run.progress``, ``run.completed``, ``run.failed``.
-            Streams may emit ``log.entry``, ``task.update``, or ``stream.error``.
-        data:
-          type: object
-          additionalProperties: true
-
-    WorkflowRunAccepted:
-      type: object
-      required:
-        - runId
-        - workflow_id
-        - workflowDefinitionSnapshotId
-        - definitionHash
-        - taskRuns
-        - executionMode
-        - message
-      properties:
-        runId:
-          type: string
-        workflow_id:
-          type: string
-          description: Canonical workflow row id for this run.
-        catalogItemId:
-          type: string
-          description: Catalog key recorded on the run metadata for UI deep links.
-        workflowDefinitionSnapshotId:
-          type: string
-        definitionHash:
-          type: string
-        taskRuns:
-          type: integer
-        executionMode:
-          type: string
-          enum: [queued, inline]
-        message:
-          type: string
-
-    WorkflowNotFound:
-      type: object
-      required: [error, reason, workflow_id]
-      properties:
-        error:
-          type: string
-          enum: [Workflow not found]
-        reason:
-          type: string
-          enum: [not_found, invalid_definition]
-        workflow_id:
-          type: string
-          description: Catalog key supplied by the client (or defaulted bundled demo id).
-
-    WorkflowValidationError:
-      type: object
-      required: [error]
-      properties:
-        error:
-          type: string
-          enum: [Workflow validation failed]
-        code:
-          type: string
-          description: Stable machine-readable validation classification when provided.
-        message:
-          type: string
-          description: Human-readable summary when provided (defaults to ``error`` when omitted).
-        details:
-          type: object
-          additionalProperties: true
-          description: Structured validation diagnostics (graph errors, field paths, etc.).
-
-    WorkflowEngineUnavailable:
-      type: object
-      required: [error, message]
-      properties:
-        error:
-          type: string
-          enum: [Execution engine unavailable]
-        reason:
-          type: string
-          enum: [worker_queue_required]
-        message:
-          type: string
+          description: HTML dashboard
