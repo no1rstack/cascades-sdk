@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-__version__ = "0.3.1"
+__version__ = "0.4.0"
 
 # Must match ``info.version`` in ``contracts/api.yaml`` (SDK ↔ platform HTTP boundary).
 API_CONTRACT_VERSION = "1.0.0"
@@ -20,6 +20,12 @@ PRODUCT_NAME = "Cascades"
 COMPANY_NAME = "Noir Stack LLC"
 SDK_MAINTAINER = "Hira Barton"
 SDK_REPOSITORY_URL = "https://github.com/no1rstack/cascades-sdk"
+SDK_DOCS_URL = "https://cascades.work/docs"
+SDK_GETTING_STARTED_URL = f"{SDK_DOCS_URL}/getting-started"
+SDK_AUTH_URL = f"{SDK_DOCS_URL}/authentication"
+SDK_WORKFLOWS_URL = f"{SDK_DOCS_URL}/workflows"
+SDK_API_REFERENCE_URL = f"{SDK_DOCS_URL}/api"
+SDK_EXAMPLES_URL = f"{SDK_DOCS_URL}/examples"
 
 
 def build_default_user_agent() -> str:
