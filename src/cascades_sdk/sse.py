@@ -1,6 +1,5 @@
 """Minimal SSE (``text/event-stream``) parsing for run telemetry."""
 
-from __future__ import annotations
 
 import json
 from typing import Any, Dict, Iterator, List

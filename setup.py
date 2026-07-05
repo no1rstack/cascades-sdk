@@ -1,0 +1,35 @@
+from setuptools import setup, find_packages
+
+setup(
+    name="cascades-sdk",
+    version="0.4.0",
+    description="Python SDK for Cascades: capture-mode @task/@flow DAG compiler and thin HTTP client",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    license="BUSL-1.1",
+    author="Noir Stack LLC",
+    url="https://github.com/no1rstack/cascades-sdk",
+    project_urls={
+        "Documentation": "https://cascades.work/docs",
+        "Source": "https://github.com/no1rstack/cascades-sdk",
+    },
+    python_requires=">=3.6",
+    install_requires=["requests>=2.25.0"],
+    packages=find_packages("src"),
+    package_dir={"": "src"},
+    include_package_data=True,
+    zip_safe=False,
+    keywords=["cascades", "workflow", "orchestration", "dag", "task", "flow"],
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "Intended Audience :: Developers",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+    ],
+)

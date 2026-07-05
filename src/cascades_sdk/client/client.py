@@ -1,6 +1,5 @@
 """Unified HTTP client for every path in ``contracts/api.yaml``."""
 
-from __future__ import annotations
 
 from typing import Any, Dict, Iterator, Optional
 

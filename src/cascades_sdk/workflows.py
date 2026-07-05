@@ -3,7 +3,6 @@
 Reduces boilerplate when submitting, tracking, and inspecting workflows.
 """
 
-from __future__ import annotations
 
 from typing import Any, Dict, Optional
 

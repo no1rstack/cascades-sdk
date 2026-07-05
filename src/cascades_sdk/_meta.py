@@ -4,7 +4,6 @@ When the Cascades platform bumps ``info.version`` in ``contracts/api.yaml``, upd
 ``API_CONTRACT_VERSION`` here to match (see ``tests/test_contract_parity.py``).
 """
 
-from __future__ import annotations
 
 from typing import Dict
 
@@ -26,6 +25,11 @@ SDK_AUTH_URL = f"{SDK_DOCS_URL}/authentication"
 SDK_WORKFLOWS_URL = f"{SDK_DOCS_URL}/workflows"
 SDK_API_REFERENCE_URL = f"{SDK_DOCS_URL}/api"
 SDK_EXAMPLES_URL = f"{SDK_DOCS_URL}/examples"
+SDK_DIAGNOSTICS_URL = f"{SDK_DOCS_URL}/diagnostics"
+SDK_TROUBLESHOOTING_URL = f"{SDK_DOCS_URL}/troubleshooting"
+SDK_VERSIONING_URL = f"{SDK_DOCS_URL}/versioning"
+SDK_CONFIGURATION_URL = f"{SDK_DOCS_URL}/configuration"
+SDK_FAQ_URL = f"{SDK_DOCS_URL}/faq"
 
 
 def build_default_user_agent() -> str:

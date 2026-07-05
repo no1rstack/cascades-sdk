@@ -1,6 +1,5 @@
 """Authentication strategies aligned with ``contracts/api.yaml`` security schemes."""
 
-from __future__ import annotations
 
 from typing import Dict, List, Mapping, Optional, Protocol, Tuple
 

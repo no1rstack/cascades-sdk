@@ -1,6 +1,5 @@
 """TypedDict shapes mirroring ``contracts/api.yaml`` component schemas (wire-format / camelCase)."""
 
-from __future__ import annotations
 
 from typing import Any, Dict, Literal, TypedDict
 

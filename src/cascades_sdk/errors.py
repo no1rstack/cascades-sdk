@@ -4,7 +4,6 @@ Every error includes a link to the relevant documentation to help
 developers quickly troubleshoot issues.
 """
 
-from __future__ import annotations
 
 from typing import Any, Optional
 

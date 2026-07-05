@@ -1,6 +1,5 @@
 """Wait for workflow run terminal state via the contract SSE stream."""
 
-from __future__ import annotations
 
 import asyncio
 import time

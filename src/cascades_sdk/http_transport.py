@@ -1,6 +1,5 @@
 """Central HTTP session and request/response handling for the Cascades API."""
 
-from __future__ import annotations
 
 from typing import Any, Dict, Mapping, Optional
 

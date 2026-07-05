@@ -78,6 +78,16 @@ from .client import (
 from . import workflows
 from . import getting_started
 from . import examples
+from . import diagnostics
+from .diagnostics import (
+    DiagnosticsEngine,
+    DiagnosticCheck,
+    DiagnosticResult,
+    DiagnosticSeverity,
+    run_diagnostics,
+    create_default_engine,
+)
+from .diagnostics.healing import HealingEngine, BaseHealer, HealResult
 
 __all__ = [
     # Metadata
@@ -135,4 +145,15 @@ __all__ = [
     "workflows",
     "getting_started",
     "examples",
+    "diagnostics",
+    # Diagnostics
+    "DiagnosticsEngine",
+    "DiagnosticCheck",
+    "DiagnosticResult",
+    "DiagnosticSeverity",
+    "run_diagnostics",
+    "create_default_engine",
+    "HealingEngine",
+    "BaseHealer",
+    "HealResult",
 ]
